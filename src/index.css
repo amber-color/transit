@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: #f9fafb;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* FullCalendar customizations */
+.fc .fc-toolbar-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.fc .fc-button {
+  background-color: #4F46E5 !important;
+  border-color: #4F46E5 !important;
+  font-size: 0.85rem !important;
+}
+
+.fc .fc-button:hover {
+  background-color: #4338CA !important;
+  border-color: #4338CA !important;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background-color: #3730A3 !important;
+  border-color: #3730A3 !important;
+}
+
+.fc .fc-timegrid-slot {
+  height: 2rem;
+}
+
+.fc-event-transit {
+  cursor: default !important;
+}
+
+.fc .fc-daygrid-event {
+  border-radius: 4px;
+}
