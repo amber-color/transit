@@ -1,13 +1,525 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>移動時間カレンダー</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>移動時間カレンダー</title>
+  <script>
+    tailwind.config = {
+      safelist: ['bg-red-600','bg-green-600','bg-gray-700','bg-red-50','text-red-600','hidden','flex']
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales/ja.global.min.js"></script>
+  <style>
+    body { background:#f9fafb; margin:0; font-family:system-ui,sans-serif; }
+    .fc .fc-button-primary { background-color:#4F46E5 !important; border-color:#4F46E5 !important; font-size:.85rem !important; }
+    .fc .fc-button-primary:hover { background-color:#4338CA !important; border-color:#4338CA !important; }
+    .fc .fc-button-primary:not(:disabled).fc-button-active,
+    .fc .fc-button-primary:not(:disabled):active { background-color:#3730A3 !important; border-color:#3730A3 !important; }
+    .fc .fc-timegrid-slot { height:2rem; }
+    .fc-transit { cursor:default !important; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-30">
+  <div class="max-w-7xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">🗓️</span>
+      <div>
+        <div class="text-lg font-bold text-gray-900 leading-tight">移動時間カレンダー</div>
+        <div class="text-xs text-gray-500">予定の場所を設定すると移動時間を自動挿入します</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div id="loading-indicator" style="display:none" class="flex items-center gap-2 text-sm text-gray-500">
+        <svg class="animate-spin h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        <span>移動時間を取得中...</span>
+      </div>
+      <button onclick="openSettings()" class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg" title="設定">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="max-w-7xl mx-auto px-4 py-4 space-y-3">
+  <div id="warning-banner" style="display:none"
+    class="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+    <span>⚠️</span><span id="warning-text"></span>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div id="calendar"></div>
+  </div>
+
+  <div class="flex flex-wrap gap-4 text-xs text-gray-500 px-1">
+    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded bg-indigo-500"></div><span>通常の予定</span></div>
+    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded bg-gray-400"></div><span>移動中（自動挿入）</span></div>
+    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded bg-red-500"></div><span>移動時間が足りない区間</span></div>
+  </div>
+</main>
+
+<!-- Event Modal -->
+<div id="event-modal" style="display:none" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+    <div class="flex items-center justify-between px-6 py-4 border-b">
+      <div id="modal-heading" class="text-lg font-semibold text-gray-800">予定を追加</div>
+      <button onclick="closeEventModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+    </div>
+    <div class="px-6 py-5 space-y-4">
+      <div id="modal-error" style="display:none" class="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg"></div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">タイトル <span class="text-red-500">*</span></label>
+        <input id="modal-title" type="text" placeholder="予定のタイトル"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">開始日時 <span class="text-red-500">*</span></label>
+          <input id="modal-start" type="datetime-local"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">終了日時 <span class="text-red-500">*</span></label>
+          <input id="modal-end" type="datetime-local"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">場所</label>
+        <input id="modal-location" type="text" placeholder="例: 渋谷、新宿駅、東京タワー"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <p class="text-xs text-gray-500 mt-1">設定すると隣接する予定との移動時間を自動計算します</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">メモ</label>
+        <textarea id="modal-memo" rows="2" placeholder="メモ（任意）"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"></textarea>
+      </div>
+    </div>
+    <div class="flex items-center justify-between px-6 py-4 border-t">
+      <div>
+        <button id="delete-btn" style="display:none" onclick="handleDeleteEvent()"
+          class="px-4 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg">削除</button>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="closeEventModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
+        <button onclick="handleSaveEvent()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">
+          <span id="save-btn-text">追加</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settings-modal" style="display:none" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+    <div class="flex items-center justify-between px-6 py-4 border-b">
+      <div class="text-lg font-semibold text-gray-800">⚙️ 設定</div>
+      <button onclick="closeSettings()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+    </div>
+    <div class="px-6 py-5 space-y-5">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">移動時間バッファ（分）</label>
+        <input id="settings-buffer" type="number" min="0" max="60" value="5"
+          class="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <p class="text-xs text-gray-500 mt-1">取得した移動時間にこの分数を加算します（デフォルト: 5分）</p>
+      </div>
+      <div class="bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-500 space-y-1">
+        <p class="font-medium text-gray-600">移動時間の取得について</p>
+        <p>場所名を OpenStreetMap でジオコーディングし、
+          <a href="https://api.transit.ls8h.com/" target="_blank" rel="noreferrer"
+            class="underline text-indigo-500">transit.ls8h.com API</a>
+          で所要時間を算出します。</p>
+      </div>
+    </div>
+    <div class="flex justify-end gap-3 px-6 py-4 border-t">
+      <button onclick="closeSettings()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
+      <button onclick="handleSaveSettings()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+
+<script>
+// ===== CONFIG =====
+const TRANSIT_API = 'https://api.transit.ls8h.com/api/v1/plan';
+const NOMINATIM  = 'https://nominatim.openstreetmap.org/search';
+const EVENTS_KEY  = 'transit_events_v2';
+const SETTINGS_KEY = 'transit_settings_v2';
+
+// ===== STATE =====
+let userEvents = [];
+let settings = { bufferMinutes: 5 };
+let calendar;
+let editingEventId = null;
+const geoCache = new Map();
+const transitCache = new Map();
+let geocodeQueue = Promise.resolve();
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ===== STORAGE =====
+function loadStorage() {
+  try { userEvents = JSON.parse(localStorage.getItem(EVENTS_KEY)) || []; } catch { userEvents = []; }
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if (s) settings = { bufferMinutes: s.bufferMinutes ?? 5 };
+  } catch {}
+}
+const saveEvents   = () => localStorage.setItem(EVENTS_KEY, JSON.stringify(userEvents));
+const saveSettings = () => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+
+// ===== UUID =====
+function uid() {
+  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+}
+
+// ===== GEOCODING (Nominatim, 1 req/sec) =====
+function geocode(location) {
+  if (geoCache.has(location)) return Promise.resolve(geoCache.get(location));
+  return new Promise(resolve => {
+    geocodeQueue = geocodeQueue.then(async () => {
+      if (geoCache.has(location)) { resolve(geoCache.get(location)); return; }
+      try {
+        const r = await fetch(
+          `${NOMINATIM}?q=${encodeURIComponent(location)}&format=json&limit=1&accept-language=ja&countrycodes=jp`,
+          { headers: { 'User-Agent': 'TransitCalendarApp/1.0' } }
+        );
+        const d = await r.json();
+        const geo = d.length ? { lat: +d[0].lat, lon: +d[0].lon } : null;
+        geoCache.set(location, geo);
+        resolve(geo);
+      } catch { geoCache.set(location, null); resolve(null); }
+      await sleep(1100);
+    });
+  });
+}
+
+// ===== TRANSIT API =====
+async function fetchTransitMinutes(fromGeo, toGeo) {
+  try {
+    const url = `${TRANSIT_API}?from=geo:${fromGeo.lat.toFixed(4)},${fromGeo.lon.toFixed(4)}&to=geo:${toGeo.lat.toFixed(4)},${toGeo.lon.toFixed(4)}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const journeys = (d.journeys || []).filter(j => j.legs.some(l => l.kind === 'transit'));
+    if (!journeys.length) return null;
+    return Math.ceil(Math.min(...journeys.map(j => j.durationSecs)) / 60);
+  } catch { return null; }
+}
+
+// ===== TRANSIT PAIRS =====
+function getTransitPairs() {
+  const byDate = new Map();
+  for (const ev of userEvents) {
+    if (!ev.location) continue;
+    const d = ev.start.slice(0, 10);
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push(ev);
+  }
+  const pairs = [];
+  for (const [, evs] of byDate) {
+    const sorted = [...evs].sort((a, b) => new Date(a.start) - new Date(b.start));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i].location && sorted[i+1].location)
+        pairs.push({ from: sorted[i].location, to: sorted[i+1].location });
+    }
+  }
+  return pairs;
+}
+
+// ===== BUILD TRANSIT EVENTS =====
+function buildTransitEvents() {
+  const result = [];
+  const byDate = new Map();
+  for (const ev of userEvents) {
+    const d = ev.start.slice(0, 10);
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push(ev);
+  }
+  for (const [, evs] of byDate) {
+    const sorted = [...evs].sort((a, b) => new Date(a.start) - new Date(b.start));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const cur = sorted[i], nxt = sorted[i+1];
+      if (!cur.location || !nxt.location) continue;
+      const key = `${cur.location}__${nxt.location}`;
+      if (!transitCache.has(key)) continue;
+      const raw = transitCache.get(key);
+      if (raw === null) continue;
+      const total = raw + settings.bufferMinutes;
+      const tStart = new Date(cur.end);
+      const tEnd   = new Date(+tStart + total * 60000);
+      const warn   = tEnd > new Date(nxt.start);
+      result.push({
+        id: `transit_${uid()}`,
+        title: `🚃 移動中（${total}分）`,
+        start: tStart.toISOString(),
+        end:   tEnd.toISOString(),
+        backgroundColor: warn ? '#EF4444' : '#9CA3AF',
+        borderColor:     warn ? '#EF4444' : '#9CA3AF',
+        editable: false,
+        classNames: ['fc-transit'],
+        extendedProps: { isTransit: true, warn }
+      });
+    }
+  }
+  return result;
+}
+
+// ===== FETCH ALL TRANSIT =====
+async function fetchAllTransit() {
+  const pairs  = getTransitPairs();
+  const unique = [...new Map(pairs.map(p => [`${p.from}__${p.to}`, p])).values()];
+  const toFetch = unique.filter(p => !transitCache.has(`${p.from}__${p.to}`));
+
+  if (toFetch.length) {
+    setLoading(true);
+    for (const pair of toFetch) {
+      const key = `${pair.from}__${pair.to}`;
+      const [fg, tg] = await Promise.all([geocode(pair.from), geocode(pair.to)]);
+      if (!fg || !tg) { transitCache.set(key, null); continue; }
+      transitCache.set(key, await fetchTransitMinutes(fg, tg));
+    }
+    setLoading(false);
+  }
+  refreshCalendar();
+}
+
+function refreshCalendar() {
+  if (!calendar) return;
+  calendar.getEvents().filter(e => e.extendedProps.isTransit).forEach(e => e.remove());
+  const tevs = buildTransitEvents();
+  tevs.forEach(e => calendar.addEvent(e));
+  const warnCount = tevs.filter(e => e.extendedProps.warn).length;
+  const banner = document.getElementById('warning-banner');
+  if (warnCount) {
+    document.getElementById('warning-text').textContent =
+      `移動時間が足りない区間が ${warnCount} 件あります。赤色のブロックを確認してください。`;
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+// ===== HELPERS =====
+function setLoading(v) {
+  document.getElementById('loading-indicator').style.display = v ? 'flex' : 'none';
+}
+
+function showToast(msg, type) {
+  const colors = { success: '#16a34a', error: '#dc2626', info: '#374151' };
+  const el = document.createElement('div');
+  el.style.cssText = `background:${colors[type]||colors.info};color:#fff;padding:.75rem 1rem;border-radius:.5rem;box-shadow:0 4px 6px rgba(0,0,0,.1);display:flex;align-items:center;gap:.75rem;min-width:16rem;max-width:22rem`;
+  el.innerHTML = `<span style="flex:1;font-size:.875rem">${msg}</span><button onclick="this.parentElement.remove()" style="color:rgba(255,255,255,.7);font-size:1.25rem;line-height:1;background:none;border:none;cursor:pointer">×</button>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function toLocalInput(iso) {
+  const d = new Date(iso), pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toFcEvent(ev) {
+  return {
+    id: ev.id, title: ev.title, start: ev.start, end: ev.end,
+    backgroundColor: '#4F46E5', borderColor: '#4F46E5', editable: true,
+    extendedProps: { isTransit: false, location: ev.location, memo: ev.memo }
+  };
+}
+
+// ===== EVENT MODAL =====
+function openAddModal(start, end) {
+  editingEventId = null;
+  document.getElementById('modal-heading').textContent = '予定を追加';
+  document.getElementById('modal-title').value = '';
+  document.getElementById('modal-start').value = start ? toLocalInput(start) : '';
+  document.getElementById('modal-end').value   = end   ? toLocalInput(end)   : '';
+  document.getElementById('modal-location').value = '';
+  document.getElementById('modal-memo').value = '';
+  document.getElementById('modal-error').style.display = 'none';
+  document.getElementById('delete-btn').style.display  = 'none';
+  document.getElementById('save-btn-text').textContent = '追加';
+  document.getElementById('event-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('modal-title').focus(), 50);
+}
+
+function openEditModal(ev) {
+  editingEventId = ev.id;
+  document.getElementById('modal-heading').textContent = '予定を編集';
+  document.getElementById('modal-title').value    = ev.title;
+  document.getElementById('modal-start').value    = toLocalInput(ev.start);
+  document.getElementById('modal-end').value      = toLocalInput(ev.end);
+  document.getElementById('modal-location').value = ev.location || '';
+  document.getElementById('modal-memo').value     = ev.memo || '';
+  document.getElementById('modal-error').style.display = 'none';
+  document.getElementById('delete-btn').style.display  = 'inline-flex';
+  document.getElementById('save-btn-text').textContent = '更新';
+  document.getElementById('event-modal').style.display = 'flex';
+}
+
+function closeEventModal() {
+  document.getElementById('event-modal').style.display = 'none';
+  editingEventId = null;
+}
+
+function handleSaveEvent() {
+  const title    = document.getElementById('modal-title').value.trim();
+  const start    = document.getElementById('modal-start').value;
+  const end      = document.getElementById('modal-end').value;
+  const location = document.getElementById('modal-location').value.trim();
+  const memo     = document.getElementById('modal-memo').value.trim();
+  const errEl    = document.getElementById('modal-error');
+
+  const showErr = msg => { errEl.textContent = msg; errEl.style.display = 'block'; };
+  if (!title)                           return showErr('タイトルを入力してください');
+  if (!start || !end)                   return showErr('開始・終了日時を入力してください');
+  if (new Date(start) >= new Date(end)) return showErr('終了日時は開始日時より後にしてください');
+  errEl.style.display = 'none';
+
+  const startISO = new Date(start).toISOString();
+  const endISO   = new Date(end).toISOString();
+  const loc      = location || undefined;
+  const mem      = memo || undefined;
+
+  if (editingEventId) {
+    const idx = userEvents.findIndex(e => e.id === editingEventId);
+    if (idx >= 0) {
+      const oldLoc = userEvents[idx].location;
+      userEvents[idx] = { ...userEvents[idx], title, start: startISO, end: endISO, location: loc, memo: mem };
+      const fcEv = calendar.getEventById(editingEventId);
+      if (fcEv) {
+        fcEv.setProp('title', title);
+        fcEv.setStart(startISO); fcEv.setEnd(endISO);
+        fcEv.setExtendedProp('location', loc);
+        fcEv.setExtendedProp('memo', mem);
+      }
+      if (oldLoc !== loc) {
+        for (const k of [...transitCache.keys()])
+          if ((oldLoc && k.includes(oldLoc)) || (loc && k.includes(loc))) transitCache.delete(k);
+      }
+      showToast('予定を更新しました', 'success');
+    }
+  } else {
+    const ev = { id: uid(), title, start: startISO, end: endISO, location: loc, memo: mem };
+    userEvents.push(ev);
+    calendar.addEvent(toFcEvent(ev));
+    showToast('予定を追加しました', 'success');
+  }
+
+  saveEvents();
+  closeEventModal();
+  fetchAllTransit();
+}
+
+function handleDeleteEvent() {
+  if (!editingEventId) return;
+  calendar.getEventById(editingEventId)?.remove();
+  userEvents = userEvents.filter(e => e.id !== editingEventId);
+  saveEvents();
+  closeEventModal();
+  refreshCalendar();
+  showToast('予定を削除しました', 'info');
+}
+
+// ===== SETTINGS MODAL =====
+function openSettings() {
+  document.getElementById('settings-buffer').value = settings.bufferMinutes;
+  document.getElementById('settings-modal').style.display = 'flex';
+}
+function closeSettings() {
+  document.getElementById('settings-modal').style.display = 'none';
+}
+function handleSaveSettings() {
+  settings.bufferMinutes = parseInt(document.getElementById('settings-buffer').value) || 5;
+  saveSettings();
+  closeSettings();
+  refreshCalendar();
+  showToast('設定を保存しました', 'success');
+}
+
+// ===== CALENDAR =====
+function initCalendar() {
+  calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+    initialView: 'timeGridWeek',
+    headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
+    buttonText: { today: '今日', month: '月', week: '週', day: '日' },
+    locale: 'ja',
+    height: 'auto',
+    editable: true,
+    selectable: true,
+    selectMirror: true,
+    dayMaxEvents: true,
+    slotMinTime: '06:00:00',
+    slotMaxTime: '24:00:00',
+    allDaySlot: false,
+    nowIndicator: true,
+    scrollTime: '08:00:00',
+    events: userEvents.map(toFcEvent),
+
+    select(info) { openAddModal(info.startStr, info.endStr); calendar.unselect(); },
+
+    eventClick(info) {
+      if (info.event.extendedProps.isTransit) return;
+      const ev = userEvents.find(e => e.id === info.event.id);
+      if (ev) openEditModal(ev);
+    },
+
+    eventDrop(info) {
+      if (info.event.extendedProps.isTransit) { info.revert(); return; }
+      const ev = userEvents.find(e => e.id === info.event.id);
+      if (ev) { ev.start = info.event.startStr; ev.end = info.event.endStr; saveEvents(); fetchAllTransit(); }
+    },
+
+    eventContent(info) {
+      const { isTransit, location } = info.event.extendedProps;
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:2px 4px;overflow:hidden;height:100%';
+      if (isTransit) {
+        div.innerHTML = `<div style="font-size:.75rem;font-weight:500;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${escHtml(info.event.title)}</div>`;
+      } else {
+        div.innerHTML = `
+          <div style="font-size:.75rem;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#fff">${escHtml(info.event.title)}</div>
+          ${location ? `<div style="font-size:.7rem;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:rgba(255,255,255,.8)">📍 ${escHtml(location)}</div>` : ''}
+        `;
+      }
+      return { domNodes: [div] };
+    }
+  });
+  calendar.render();
+}
+
+// ===== KEYBOARD =====
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeEventModal(); closeSettings(); }
+});
+
+// ===== INIT =====
+loadStorage();
+document.addEventListener('DOMContentLoaded', () => {
+  initCalendar();
+  if (getTransitPairs().length) fetchAllTransit();
+});
+</script>
+</body>
 </html>
