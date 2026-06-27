@@ -16,10 +16,14 @@ const SETTINGS_KEY = 'transit_calendar_settings';
 function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    return raw ? JSON.parse(raw) : { workerUrl: '', bufferMinutes: 5 };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { bufferMinutes: parsed.bufferMinutes ?? 5 };
+    }
   } catch {
-    return { workerUrl: '', bufferMinutes: 5 };
+    // ignore
   }
+  return { bufferMinutes: 5 };
 }
 
 function saveSettings(s: AppSettings) {
@@ -50,18 +54,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!settings.workerUrl) return;
     const eventsWithLocation = userEvents.filter((e) => e.location);
     if (eventsWithLocation.length < 2) return;
 
-    fetchAll(settings.workerUrl, userEvents).catch(() => {
+    fetchAll(userEvents).catch(() => {
       addToast('移動時間の取得に失敗しました', 'error');
     });
-  }, [userEvents, settings.workerUrl, settings.bufferMinutes, fetchAll, addToast]);
+  }, [userEvents, fetchAll, addToast]);
 
   const transitEvents = buildTransitEvents(userEvents, transitMap, settings.bufferMinutes);
   const allEvents = [...userEvents, ...transitEvents];
-
   const warningCount = transitEvents.filter((e) => e.extendedProps?.transitWarning).length;
 
   const handleSaveSettings = (next: AppSettings) => {
@@ -144,19 +146,6 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-3">
-        {!settings.workerUrl && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm flex items-center gap-3">
-            <span>⚠️</span>
-            <span>Worker URLが未設定のため移動時間の自動計算が無効です。</span>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="ml-auto text-amber-700 underline hover:text-amber-900 whitespace-nowrap"
-            >
-              設定する →
-            </button>
-          </div>
-        )}
-
         <TransitWarning count={warningCount} />
 
         <Calendar

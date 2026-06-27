@@ -8,11 +8,10 @@ interface Props {
 }
 
 export function SettingsModal({ settings, onSave, onClose }: Props) {
-  const [workerUrl, setWorkerUrl] = useState(settings.workerUrl);
   const [bufferMinutes, setBufferMinutes] = useState(settings.bufferMinutes);
 
   const handleSave = () => {
-    onSave({ workerUrl: workerUrl.trim(), bufferMinutes });
+    onSave({ bufferMinutes });
     onClose();
   };
 
@@ -32,23 +31,6 @@ export function SettingsModal({ settings, onSave, onClose }: Props) {
         <div className="px-6 py-5 space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Cloudflare Worker URL
-            </label>
-            <input
-              type="url"
-              value={workerUrl}
-              onChange={(e) => setWorkerUrl(e.target.value)}
-              placeholder="https://transit-proxy.xxx.workers.dev"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Yahoo!乗換案内をスクレイピングするCloudflare WorkerのURL。
-              未設定の場合は移動時間の自動計算がスキップされます。
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
               移動時間バッファ（分）
             </label>
             <input
@@ -62,6 +44,12 @@ export function SettingsModal({ settings, onSave, onClose }: Props) {
             <p className="text-xs text-gray-500 mt-1">
               取得した移動時間にこの分数を加算します（デフォルト: 5分）
             </p>
+          </div>
+
+          <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-500 space-y-1">
+            <p className="font-medium text-gray-600">移動時間の取得について</p>
+            <p>場所名から OpenStreetMap でジオコーディングし、<a href="https://api.transit.ls8h.com/" target="_blank" rel="noreferrer" className="underline text-indigo-500">transit.ls8h.com API</a> で所要時間を算出します。</p>
+            <p>日本の駅名・地名・住所に対応しています。</p>
           </div>
         </div>
 

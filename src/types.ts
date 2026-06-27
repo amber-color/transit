@@ -17,7 +17,6 @@ export interface CalendarEvent {
 }
 
 export interface AppSettings {
-  workerUrl: string;
   bufferMinutes: number;
 }
 
