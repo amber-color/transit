@@ -9,7 +9,6 @@ import { useEvents } from './hooks/useEvents';
 import { useTransitTime } from './hooks/useTransitTime';
 import { buildTransitEvents } from './utils/transitCalc';
 import type { AppSettings, CalendarEvent, Toast } from './types';
-import './index.css';
 
 const SETTINGS_KEY = 'transit_calendar_settings';
 
