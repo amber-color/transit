@@ -342,24 +342,31 @@ async function computeSchedule() {
     let hasWarning = false;
     let warningMsg = null;
 
+    const travelProps = {
+      isTravel: true,
+      travelMin,
+      travelKnown,
+      fromLocation: currentLocation,
+      toLocation: event.location,
+    };
+
     if (event.type === 'fixed_arrival') {
       const arrivalMs = dateTimeMs(dateStr, event.arrivalTime);
       if (travelEndMs > arrivalMs) {
         hasWarning = true;
         warningMsg = `「${event.name || event.location}」への移動時間が足りません（必要：${travelMin}分、余裕：${Math.round((arrivalMs - travelStartMs) / 60000)}分）`;
       }
-      // Travel block ends at arrivalMs (clamped)
       const travelDisplayEnd = Math.max(travelEndMs, arrivalMs);
       if (travelMin > 0 || !travelKnown) {
         calEvents.push({
           id: `travel-${event.id}`,
-          title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中（計算中）',
+          title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中',
           start: toIsoLocal(travelStartMs),
           end: toIsoLocal(travelDisplayEnd),
           backgroundColor: hasWarning ? '#ef4444' : '#9ca3af',
           borderColor: 'transparent',
           textColor: '#fff',
-          extendedProps: { isTravel: true },
+          extendedProps: { ...travelProps, warning: hasWarning },
         });
       }
       eventStartMs = arrivalMs;
@@ -368,13 +375,13 @@ async function computeSchedule() {
       if (travelMin > 0 || !travelKnown) {
         calEvents.push({
           id: `travel-${event.id}`,
-          title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中（計算中）',
+          title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中',
           start: toIsoLocal(travelStartMs),
           end: toIsoLocal(travelEndMs),
           backgroundColor: '#9ca3af',
           borderColor: 'transparent',
           textColor: '#fff',
-          extendedProps: { isTravel: true },
+          extendedProps: travelProps,
         });
       }
       eventStartMs = travelEndMs;
@@ -388,13 +395,13 @@ async function computeSchedule() {
       if (travelMin > 0 || !travelKnown) {
         calEvents.push({
           id: `travel-${event.id}`,
-          title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中（計算中）',
+          title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中',
           start: toIsoLocal(travelStartMs),
           end: toIsoLocal(Math.min(travelEndMs, departureMs)),
           backgroundColor: hasWarning ? '#ef4444' : '#9ca3af',
           borderColor: 'transparent',
           textColor: '#fff',
-          extendedProps: { isTravel: true },
+          extendedProps: { ...travelProps, warning: hasWarning },
         });
       }
       eventStartMs = Math.min(travelEndMs, departureMs);
@@ -734,21 +741,35 @@ document.addEventListener('DOMContentLoaded', () => {
     slotLabelFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
     eventContent: (arg) => {
       const { event } = arg;
-      const isTravel = event.extendedProps.isTravel;
-      const loc = event.extendedProps.location;
-      const titleEl = document.createElement('div');
-      titleEl.style.cssText = 'padding:2px 4px;font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;';
-      titleEl.textContent = event.title;
-      if (loc && !isTravel) {
-        const locEl = document.createElement('div');
-        locEl.style.cssText = 'padding:0 4px;font-size:0.65rem;opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-        locEl.textContent = '📍 ' + loc;
-        const wrap = document.createElement('div');
-        wrap.appendChild(titleEl);
-        wrap.appendChild(locEl);
-        return { domNodes: [wrap] };
+      const ep = event.extendedProps;
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'padding:2px 4px;overflow:hidden;';
+
+      if (ep.isTravel) {
+        // Title row: 🚃 移動中 Xmin
+        const t = document.createElement('div');
+        t.style.cssText = 'font-size:0.7rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        t.textContent = event.title;
+        wrap.appendChild(t);
+        // Route row: 出発地 → 目的地
+        const r = document.createElement('div');
+        r.style.cssText = 'font-size:0.65rem;opacity:0.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;';
+        r.textContent = `${ep.fromLocation} → ${ep.toLocation}`;
+        wrap.appendChild(r);
+      } else {
+        // User event: title + location
+        const t = document.createElement('div');
+        t.style.cssText = 'font-size:0.7rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        t.textContent = event.title;
+        wrap.appendChild(t);
+        if (ep.location) {
+          const l = document.createElement('div');
+          l.style.cssText = 'font-size:0.65rem;opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;';
+          l.textContent = '📍 ' + ep.location;
+          wrap.appendChild(l);
+        }
       }
-      return { domNodes: [titleEl] };
+      return { domNodes: [wrap] };
     },
     eventClick: (info) => {
       const eventId = info.event.extendedProps.eventId;
