@@ -164,7 +164,7 @@
       </div>
     </div>
     <div class="flex justify-between px-5 py-4 border-t">
-      <button id="modal-delete-btn" onclick="deleteCurrentEvent()" class="hidden px-3 py-2 text-sm text-red-600 hover:text-red-800">削除</button>
+      <button id="modal-delete-btn" onclick="deleteCurrentEvent()" style="display:none" class="px-3 py-2 text-sm text-red-600 hover:text-red-800">削除</button>
       <div class="flex gap-2 ml-auto">
         <button onclick="closeEventModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
         <button onclick="saveEventModal()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">保存</button>
@@ -574,7 +574,7 @@ function openAddModal() {
   document.getElementById('modal-arrival-time').value = '11:00';
   document.getElementById('modal-stay-minutes').value = '60';
   document.getElementById('modal-departure-time').value = '15:00';
-  document.getElementById('modal-delete-btn').classList.add('hidden');
+  document.getElementById('modal-delete-btn').style.display = 'none';
   // Default to fixed_arrival
   document.querySelector('input[name="event-type"][value="fixed_arrival"]').checked = true;
   onTypeChange();
@@ -591,7 +591,7 @@ function openEditModal(id) {
   document.getElementById('modal-arrival-time').value = event.arrivalTime || '11:00';
   document.getElementById('modal-stay-minutes').value = event.stayMinutes || 60;
   document.getElementById('modal-departure-time').value = event.departureTime || '15:00';
-  document.getElementById('modal-delete-btn').classList.remove('hidden');
+  document.getElementById('modal-delete-btn').style.display = 'inline-block';
   document.querySelector(`input[name="event-type"][value="${event.type}"]`).checked = true;
   onTypeChange();
   document.getElementById('event-modal').style.display = 'flex';
