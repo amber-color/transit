@@ -20,6 +20,10 @@
 </head>
 <body class="bg-gray-100 flex flex-col lg:h-screen lg:overflow-hidden">
 
+<!-- Loading bar (fixed, doesn't affect layout) -->
+<div id="loading-indicator" style="display:none;position:fixed;top:0;left:0;right:0;height:3px;background:#6366f1;z-index:100;animation:loadingPulse 1s ease-in-out infinite alternate"></div>
+<style>@keyframes loadingPulse { from { opacity:0.5 } to { opacity:1 } }</style>
+
 <!-- Header -->
 <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4 flex-shrink-0 shadow-sm">
   <div class="flex items-center gap-2">
@@ -31,13 +35,6 @@
     <input type="date" id="date-input" class="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
     <button onclick="changeDate(1)" class="px-2 py-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded text-sm">›</button>
     <button onclick="gotoToday()" class="px-2 py-1 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded border border-gray-300">今日</button>
-  </div>
-  <div id="loading-indicator" style="display:none" class="flex items-center gap-1.5 text-xs text-indigo-600 ml-2">
-    <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-    </svg>
-    <span>計算中...</span>
   </div>
 </header>
 
