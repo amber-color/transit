@@ -20,9 +20,15 @@
 </head>
 <body class="bg-gray-100 flex flex-col lg:h-screen lg:overflow-hidden">
 
-<!-- Loading bar (fixed, doesn't affect layout) -->
-<div id="loading-indicator" style="display:none;position:fixed;top:0;left:0;right:0;height:3px;background:#6366f1;z-index:100;animation:loadingPulse 1s ease-in-out infinite alternate"></div>
-<style>@keyframes loadingPulse { from { opacity:0.5 } to { opacity:1 } }</style>
+<!-- Loading toast (fixed, doesn't affect layout) -->
+<div id="loading-indicator" style="display:none;position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);z-index:100;background:#6366f1;color:#fff;padding:0.4rem 0.9rem;border-radius:9999px;font-size:0.75rem;font-weight:500;align-items:center;gap:0.4rem;box-shadow:0 2px 8px rgba(0,0,0,0.2);white-space:nowrap;">
+  <svg style="width:0.85rem;height:0.85rem;animation:spin 1s linear infinite;flex-shrink:0" fill="none" viewBox="0 0 24 24">
+    <circle style="opacity:.3" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+    <path style="opacity:.9" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+  </svg>
+  計算中...
+</div>
+<style>@keyframes spin { to { transform: rotate(360deg) } }</style>
 
 <!-- Header -->
 <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4 flex-shrink-0 shadow-sm">
@@ -440,6 +446,7 @@ async function computeSchedule() {
 // ─── UI updates ───────────────────────────────────────────────────
 function setLoading(on) {
   document.getElementById('loading-indicator').style.display = on ? 'flex' : 'none';
+  document.getElementById('loading-indicator').style.alignItems = 'center';
 }
 
 function renderWarnings(warnings) {
