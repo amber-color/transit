@@ -163,11 +163,18 @@
           class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
       </div>
     </div>
-    <div class="flex justify-between px-5 py-4 border-t">
-      <button id="modal-delete-btn" onclick="deleteCurrentEvent()" style="display:none" class="px-3 py-2 text-sm text-red-600 hover:text-red-800">削除</button>
+    <div id="modal-footer-normal" class="flex justify-between px-5 py-4 border-t">
+      <button id="modal-delete-btn" onclick="confirmDelete()" style="display:none" class="px-3 py-2 text-sm text-red-600 hover:text-red-800">削除</button>
       <div class="flex gap-2 ml-auto">
         <button onclick="closeEventModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
         <button onclick="saveEventModal()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">保存</button>
+      </div>
+    </div>
+    <div id="modal-footer-confirm" style="display:none" class="flex items-center justify-between px-5 py-4 border-t bg-red-50">
+      <span class="text-sm text-red-700">本当に削除しますか？</span>
+      <div class="flex gap-2">
+        <button onclick="cancelDelete()" class="px-3 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
+        <button onclick="deleteCurrentEvent()" class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700">削除する</button>
       </div>
     </div>
   </div>
@@ -606,6 +613,8 @@ function openEditModal(id) {
 
 function closeEventModal() {
   document.getElementById('event-modal').style.display = 'none';
+  document.getElementById('modal-footer-confirm').style.display = 'none';
+  document.getElementById('modal-footer-normal').style.display = 'flex';
 }
 
 function onTypeChange() {
@@ -659,9 +668,18 @@ function saveEventModal() {
   scheduleRecompute();
 }
 
+function confirmDelete() {
+  document.getElementById('modal-footer-normal').style.display = 'none';
+  document.getElementById('modal-footer-confirm').style.display = 'flex';
+}
+
+function cancelDelete() {
+  document.getElementById('modal-footer-confirm').style.display = 'none';
+  document.getElementById('modal-footer-normal').style.display = 'flex';
+}
+
 function deleteCurrentEvent() {
   if (!editingEventId) return;
-  if (!confirm('この予定を削除しますか？')) return;
   state.events = state.events.filter(e => e.id !== editingEventId);
   closeEventModal();
   saveState();
