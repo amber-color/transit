@@ -187,6 +187,20 @@
   </div>
 </div>
 
+<!-- ===== Journey Detail Modal ===== -->
+<div id="journey-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:flex-start;justify-content:center;padding:1rem;background:rgba(0,0,0,0.5);overflow-y:auto;">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-sm" style="margin:auto;">
+    <div class="flex items-center justify-between px-5 py-4 border-b">
+      <div>
+        <h2 class="text-base font-semibold text-gray-800">🚃 移動の詳細</h2>
+        <p id="journey-route" class="text-xs text-gray-500 mt-0.5"></p>
+      </div>
+      <button onclick="closeJourneyModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none ml-4">×</button>
+    </div>
+    <div id="journey-content" class="px-5 py-4"></div>
+  </div>
+</div>
+
 <!-- ===== Day Start Modal ===== -->
 <div id="daystart-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,0.5)">
   <div class="bg-white rounded-xl shadow-xl w-full max-w-sm">
@@ -284,7 +298,7 @@ function geocode(location) {
 }
 
 // ─── Transit API ─────────────────────────────────────────────────
-async function fetchTransitMinutes(from, to) {
+async function fetchTransitDetails(from, to) {
   const key = `${from.lat.toFixed(4)},${from.lon.toFixed(4)}__${to.lat.toFixed(4)},${to.lon.toFixed(4)}`;
   if (transitCache.has(key)) return transitCache.get(key);
   try {
@@ -296,10 +310,10 @@ async function fetchTransitMinutes(from, to) {
     const transitJourneys = journeys.filter(j => j.legs && j.legs.some(l => l.kind === 'transit'));
     const pool = transitJourneys.length > 0 ? transitJourneys : journeys;
     if (pool.length === 0) { transitCache.set(key, null); return null; }
-    const minSecs = Math.min(...pool.map(j => j.durationSecs));
-    const minutes = Math.ceil(minSecs / 60);
-    transitCache.set(key, minutes);
-    return minutes;
+    const best = pool.reduce((a, b) => a.durationSecs <= b.durationSecs ? a : b);
+    const result = { minutes: Math.ceil(best.durationSecs / 60), legs: best.legs || [] };
+    transitCache.set(key, result);
+    return result;
   } catch (e) {
     transitCache.set(key, null);
     return null;
@@ -345,9 +359,10 @@ async function computeSchedule() {
 
     let travelMin = 0;
     let travelKnown = false;
+    let travelLegs = [];
     if (fromGeo && toGeo) {
-      const t = await fetchTransitMinutes(fromGeo, toGeo);
-      if (t !== null) { travelMin = t; travelKnown = true; }
+      const details = await fetchTransitDetails(fromGeo, toGeo);
+      if (details !== null) { travelMin = details.minutes; travelKnown = true; travelLegs = details.legs; }
     }
 
     const travelStartMs = currentMs;
@@ -362,6 +377,7 @@ async function computeSchedule() {
       travelKnown,
       fromLocation: currentLocation,
       toLocation: event.location,
+      legs: travelLegs,
     };
 
     if (event.type === 'fixed_arrival') {
@@ -731,11 +747,80 @@ function saveDayStart() {
   scheduleRecompute();
 }
 
+// ─── Journey detail modal ────────────────────────────────────────
+function openJourneyModal(ep) {
+  document.getElementById('journey-route').textContent = `${ep.fromLocation} → ${ep.toLocation}`;
+  document.getElementById('journey-content').innerHTML = renderJourneyLegs(ep.legs, ep.travelMin);
+  document.getElementById('journey-modal').style.display = 'flex';
+}
+
+function closeJourneyModal() {
+  document.getElementById('journey-modal').style.display = 'none';
+}
+
+function legTime(t) {
+  if (!t) return '';
+  // t may be "HH:MM:SS", "HH:MM", or epoch seconds
+  if (typeof t === 'number') {
+    const d = new Date(t * 1000);
+    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+  return String(t).slice(0, 5); // "HH:MM"
+}
+
+function stopName(s) {
+  if (!s) return '';
+  if (typeof s === 'string') return s;
+  return s.name || s.stopName || '';
+}
+
+function renderJourneyLegs(legs, totalMin) {
+  if (!legs || legs.length === 0) {
+    return `<p class="text-sm text-gray-500">移動時間：約${totalMin}分（詳細なし）</p>`;
+  }
+
+  const items = legs.map(leg => {
+    if (leg.kind === 'walk') {
+      const mins = leg.durationSecs != null ? Math.ceil(leg.durationSecs / 60)
+                 : leg.duration != null ? Math.ceil(leg.duration / 60) : '';
+      const from = stopName(leg.from || leg.fromStop);
+      const to   = stopName(leg.to   || leg.toStop);
+      return `<div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid #f3f4f6;">
+        <span style="font-size:1.1rem;flex-shrink:0;margin-top:1px;">🚶</span>
+        <div style="font-size:0.8rem;color:#374151;">
+          <div style="font-weight:600;">徒歩${mins ? '　' + mins + '分' : ''}</div>
+          ${from ? `<div style="color:#6b7280;margin-top:2px;">${escHtml(from)}${to ? ' → ' + escHtml(to) : ''}</div>` : ''}
+        </div>
+      </div>`;
+    } else {
+      const line = leg.line || leg.route?.shortName || leg.route?.longName || leg.headsign || leg.tripHeadsign || '電車';
+      const color = leg.color || leg.route?.color;
+      const borderColor = color ? (color.startsWith('#') ? color : '#' + color) : '#6366f1';
+      const from    = stopName(leg.from || leg.fromStop || leg.departure?.stop);
+      const to      = stopName(leg.to   || leg.toStop   || leg.arrival?.stop);
+      const depart  = legTime(leg.departureTime || leg.departure?.time || leg.depart);
+      const arrive  = legTime(leg.arrivalTime   || leg.arrival?.time  || leg.arrive);
+      const mins    = leg.durationSecs != null ? Math.ceil(leg.durationSecs / 60) : '';
+      return `<div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid #f3f4f6;border-left:3px solid ${borderColor};padding-left:0.6rem;">
+        <span style="font-size:1.1rem;flex-shrink:0;margin-top:1px;">🚃</span>
+        <div style="font-size:0.8rem;color:#374151;min-width:0;flex:1;">
+          <div style="font-weight:600;">${escHtml(line)}${mins ? '　' + mins + '分' : ''}</div>
+          ${from ? `<div style="color:#6b7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(from)} → ${escHtml(to)}</div>` : ''}
+          ${depart ? `<div style="color:#9ca3af;font-size:0.72rem;margin-top:1px;">${depart} 発 → ${arrive} 着</div>` : ''}
+        </div>
+      </div>`;
+    }
+  });
+
+  return `<div style="margin-bottom:0.5rem;font-size:0.75rem;color:#6b7280;">合計 約${totalMin}分</div>` + items.join('');
+}
+
 // ─── Keyboard shortcuts ───────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeEventModal();
     closeDayStartModal();
+    closeJourneyModal();
   }
 });
 
@@ -745,6 +830,9 @@ document.getElementById('event-modal').addEventListener('click', e => {
 });
 document.getElementById('daystart-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeDayStartModal();
+});
+document.getElementById('journey-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeJourneyModal();
 });
 
 // ─── Date input change ────────────────────────────────────────────
@@ -785,6 +873,11 @@ document.addEventListener('DOMContentLoaded', () => {
         r.style.cssText = 'font-size:0.65rem;opacity:0.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;';
         r.textContent = `${ep.fromLocation} → ${ep.toLocation}`;
         wrap.appendChild(r);
+        // Hint
+        const h = document.createElement('div');
+        h.style.cssText = 'font-size:0.6rem;opacity:0.75;margin-top:2px;';
+        h.textContent = 'タップして詳細';
+        wrap.appendChild(h);
       } else {
         // User event: title + location
         const t = document.createElement('div');
@@ -801,8 +894,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return { domNodes: [wrap] };
     },
     eventClick: (info) => {
-      const eventId = info.event.extendedProps.eventId;
-      if (eventId) openEditModal(eventId);
+      const ep = info.event.extendedProps;
+      if (ep.isTravel) {
+        openJourneyModal(ep);
+      } else if (ep.eventId) {
+        openEditModal(ep.eventId);
+      }
     },
     nowIndicator: true,
   });
