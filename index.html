@@ -103,12 +103,13 @@
 </div>
 
 <!-- ===== Event Modal ===== -->
-<div id="event-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,0.5)">
-  <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+<div id="event-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:flex-start;justify-content:center;padding:1rem;padding-top:max(1rem,env(safe-area-inset-top));background:rgba(0,0,0,0.5);overflow-y:auto;">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md" style="margin:auto;">
     <div class="flex items-center justify-between px-5 py-4 border-b">
       <h2 id="modal-title" class="text-base font-semibold text-gray-800">予定を追加</h2>
       <button onclick="closeEventModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
     </div>
+    <div id="modal-error" style="display:none" class="mx-5 mt-3 bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg"></div>
     <div class="px-5 py-4 space-y-4">
       <!-- Name -->
       <div>
@@ -153,17 +154,17 @@
         </div>
       </div>
       <!-- Conditional fields -->
-      <div id="field-arrival" class="hidden">
+      <div id="field-arrival" style="display:none">
         <label class="block text-xs font-medium text-gray-600 mb-1">到着時刻</label>
         <input id="modal-arrival-time" type="time"
           class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
       </div>
-      <div id="field-stay" class="hidden">
+      <div id="field-stay" style="display:none">
         <label class="block text-xs font-medium text-gray-600 mb-1">滞在時間（分）</label>
         <input id="modal-stay-minutes" type="number" min="1" max="1440" placeholder="60"
           class="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
       </div>
-      <div id="field-departure" class="hidden">
+      <div id="field-departure" style="display:none">
         <label class="block text-xs font-medium text-gray-600 mb-1">出発時刻</label>
         <input id="modal-departure-time" type="time"
           class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
@@ -620,36 +621,39 @@ function openEditModal(id) {
 
 function closeEventModal() {
   document.getElementById('event-modal').style.display = 'none';
+  document.getElementById('modal-error').style.display = 'none';
   document.getElementById('modal-footer-confirm').style.display = 'none';
   document.getElementById('modal-footer-normal').style.display = 'flex';
 }
 
 function onTypeChange() {
   const type = document.querySelector('input[name="event-type"]:checked')?.value;
-  document.getElementById('field-arrival').classList.toggle('hidden', type !== 'fixed_arrival');
-  document.getElementById('field-stay').classList.toggle('hidden', type === 'fixed_departure');
-  document.getElementById('field-departure').classList.toggle('hidden', type !== 'fixed_departure');
+  document.getElementById('field-arrival').style.display = type === 'fixed_arrival' ? 'block' : 'none';
+  document.getElementById('field-stay').style.display = type !== 'fixed_departure' ? 'block' : 'none';
+  document.getElementById('field-departure').style.display = type === 'fixed_departure' ? 'block' : 'none';
 
   // Update type button styles
   document.querySelectorAll('.type-btn input').forEach(inp => {
     const box = inp.nextElementSibling;
-    if (inp.checked) {
-      box.classList.remove('border-gray-200');
-      box.classList.add('border-indigo-500', 'bg-indigo-50');
-    } else {
-      box.classList.add('border-gray-200');
-      box.classList.remove('border-indigo-500', 'bg-indigo-50');
-    }
+    box.style.border = inp.checked ? '2px solid #6366f1' : '2px solid #e5e7eb';
+    box.style.background = inp.checked ? '#eef2ff' : '';
   });
 }
 
+function showModalError(msg) {
+  const el = document.getElementById('modal-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
 function saveEventModal() {
+  document.getElementById('modal-error').style.display = 'none';
   const name = document.getElementById('modal-name').value.trim();
   const location = document.getElementById('modal-location').value.trim();
   const type = document.querySelector('input[name="event-type"]:checked')?.value;
 
-  if (!location) { alert('場所を入力してください'); return; }
-  if (!type) { alert('タイプを選択してください'); return; }
+  if (!location) { showModalError('場所を入力してください'); return; }
+  if (!type) { showModalError('タイプを選択してください'); return; }
 
   const eventData = { name, location, type };
   if (type === 'fixed_arrival') {
