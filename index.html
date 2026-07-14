@@ -667,14 +667,14 @@ function renderSidebar() {
   const list = document.getElementById('event-list');
   const hint = document.getElementById('empty-hint');
 
+  // Remove only event cards — never innerHTML='' which would destroy the hint element
+  [...list.querySelectorAll('.event-card')].forEach(el => el.remove());
+
   if (state.events.length === 0) {
-    hint.classList.remove('hidden');
-    // Clear any event cards but keep hint
-    [...list.querySelectorAll('.event-card')].forEach(el => el.remove());
+    hint.style.display = '';
     return;
   }
-  hint.classList.add('hidden');
-  list.innerHTML = '';
+  hint.style.display = 'none';
 
   state.events.forEach((event, i) => {
     const card = document.createElement('div');
