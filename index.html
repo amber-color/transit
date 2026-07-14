@@ -729,6 +729,11 @@ function scheduleRecompute(immediate = false) {
   }, delay);
 }
 
+function invalidateAndRecompute() {
+  transitCache.clear();
+  scheduleRecompute(true);
+}
+
 // ─── Date navigation ─────────────────────────────────────────────
 function changeDate(delta) {
   const d = new Date(state.selectedDate + 'T00:00:00');
@@ -840,7 +845,7 @@ function saveEventModal() {
   closeEventModal();
   saveState();
   renderSidebar();
-  scheduleRecompute();
+  invalidateAndRecompute();
 }
 
 function confirmDelete() {
@@ -859,7 +864,7 @@ function deleteCurrentEvent() {
   closeEventModal();
   saveState();
   renderSidebar();
-  scheduleRecompute();
+  invalidateAndRecompute();
 }
 
 function moveEvent(id, delta) {
@@ -870,7 +875,7 @@ function moveEvent(id, delta) {
   [state.events[idx], state.events[newIdx]] = [state.events[newIdx], state.events[idx]];
   saveState();
   renderSidebar();
-  scheduleRecompute();
+  invalidateAndRecompute();
 }
 
 // ─── Day start modal ─────────────────────────────────────────────
@@ -894,7 +899,7 @@ function saveDayStart() {
   closeDayStartModal();
   saveState();
   renderSidebar();
-  scheduleRecompute();
+  invalidateAndRecompute();
 }
 
 // ─── Journey detail modal ────────────────────────────────────────
