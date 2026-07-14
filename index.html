@@ -311,7 +311,7 @@ async function fetchTransitDetails(from, to) {
     const pool = transitJourneys.length > 0 ? transitJourneys : journeys;
     if (pool.length === 0) { transitCache.set(key, null); return null; }
     const best = pool.reduce((a, b) => a.durationSecs <= b.durationSecs ? a : b);
-    const result = { minutes: Math.ceil(best.durationSecs / 60), legs: best.legs || [] };
+    const result = { minutes: Math.ceil(best.durationSecs / 60), legs: best.legs || [], journey: best };
     transitCache.set(key, result);
     return result;
   } catch (e) {
@@ -360,9 +360,10 @@ async function computeSchedule() {
     let travelMin = 0;
     let travelKnown = false;
     let travelLegs = [];
+    let travelJourney = null;
     if (fromGeo && toGeo) {
       const details = await fetchTransitDetails(fromGeo, toGeo);
-      if (details !== null) { travelMin = details.minutes; travelKnown = true; travelLegs = details.legs; }
+      if (details !== null) { travelMin = details.minutes; travelKnown = true; travelLegs = details.legs; travelJourney = details.journey; }
     }
 
     const travelStartMs = currentMs;
@@ -378,6 +379,7 @@ async function computeSchedule() {
       fromLocation: currentLocation,
       toLocation: event.location,
       legs: travelLegs,
+      journey: travelJourney,
     };
 
     if (event.type === 'fixed_arrival') {
@@ -748,9 +750,31 @@ function saveDayStart() {
 }
 
 // ─── Journey detail modal ────────────────────────────────────────
+function secsToHHMM(secs) {
+  if (secs == null) return '';
+  const h = Math.floor(secs / 3600) % 24;
+  const m = Math.floor((secs % 3600) / 60);
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+
+function modeIcon(mode) {
+  if (!mode) return '🚃';
+  const m = mode.toLowerCase();
+  if (m === 'bus') return '🚌';
+  if (m === 'subway' || m === 'metro') return '🚇';
+  if (m === 'walk') return '🚶';
+  return '🚃';
+}
+
 function openJourneyModal(ep) {
-  document.getElementById('journey-route').textContent = `${ep.fromLocation} → ${ep.toLocation}`;
-  document.getElementById('journey-content').innerHTML = renderJourneyLegs(ep.legs, ep.travelMin);
+  const j = ep.journey || {};
+  const depTime = secsToHHMM(j.departureSecs);
+  const arrTime = secsToHHMM(j.arrivalSecs);
+  const transfers = j.transferCount != null ? j.transferCount : null;
+
+  let subtitle = `${ep.fromLocation} → ${ep.toLocation}`;
+  document.getElementById('journey-route').textContent = subtitle;
+  document.getElementById('journey-content').innerHTML = renderJourneyDetail(ep);
   document.getElementById('journey-modal').style.display = 'flex';
 }
 
@@ -758,61 +782,87 @@ function closeJourneyModal() {
   document.getElementById('journey-modal').style.display = 'none';
 }
 
-function legTime(t) {
-  if (!t) return '';
-  // t may be "HH:MM:SS", "HH:MM", or epoch seconds
-  if (typeof t === 'number') {
-    const d = new Date(t * 1000);
-    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+function renderJourneyDetail(ep) {
+  const j = ep.journey || {};
+  const legs = ep.legs || [];
+  const totalMin = ep.travelMin;
+
+  // Journey summary bar
+  const depTime = secsToHHMM(j.departureSecs);
+  const arrTime = secsToHHMM(j.arrivalSecs);
+  const transfers = j.transferCount != null ? j.transferCount : null;
+  const accessWalk = j.accessWalkSecs ? Math.ceil(j.accessWalkSecs / 60) : null;
+  const egressWalk = j.egressWalkSecs ? Math.ceil(j.egressWalkSecs / 60) : null;
+
+  let summary = `<div style="background:#f9fafb;border-radius:0.5rem;padding:0.6rem 0.75rem;margin-bottom:0.75rem;font-size:0.8rem;display:flex;flex-wrap:wrap;gap:0.5rem 1rem;color:#374151;">`;
+  summary += `<span><b>所要時間</b> 約${totalMin}分</span>`;
+  if (depTime) summary += `<span><b>出発</b> ${depTime}</span>`;
+  if (arrTime) summary += `<span><b>到着</b> ${arrTime}</span>`;
+  if (transfers != null) summary += `<span><b>乗換</b> ${transfers}回</span>`;
+  summary += `</div>`;
+
+  if (legs.length === 0) {
+    return summary + `<p style="font-size:0.8rem;color:#6b7280;">詳細情報なし</p>`;
   }
-  return String(t).slice(0, 5); // "HH:MM"
-}
 
-function stopName(s) {
-  if (!s) return '';
-  if (typeof s === 'string') return s;
-  return s.name || s.stopName || '';
-}
-
-function renderJourneyLegs(legs, totalMin) {
-  if (!legs || legs.length === 0) {
-    return `<p class="text-sm text-gray-500">移動時間：約${totalMin}分（詳細なし）</p>`;
+  // Access walk
+  let html = summary;
+  if (accessWalk) {
+    html += `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0;border-bottom:1px solid #f3f4f6;">
+      <span style="font-size:1rem;flex-shrink:0;">🚶</span>
+      <span style="font-size:0.78rem;color:#6b7280;">駅まで徒歩 ${accessWalk}分</span>
+    </div>`;
   }
 
-  const items = legs.map(leg => {
+  // Each leg
+  legs.forEach((leg, idx) => {
+    const isLast = idx === legs.length - 1;
+    const border = isLast ? '' : 'border-bottom:1px solid #f3f4f6;';
+
     if (leg.kind === 'walk') {
-      const mins = leg.durationSecs != null ? Math.ceil(leg.durationSecs / 60)
-                 : leg.duration != null ? Math.ceil(leg.duration / 60) : '';
-      const from = stopName(leg.from || leg.fromStop);
-      const to   = stopName(leg.to   || leg.toStop);
-      return `<div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid #f3f4f6;">
-        <span style="font-size:1.1rem;flex-shrink:0;margin-top:1px;">🚶</span>
+      const mins = leg.durationSecs != null ? Math.ceil(leg.durationSecs / 60) : null;
+      const fromName = leg.from?.name || '';
+      const toName   = leg.to?.name   || '';
+      html += `<div style="display:flex;align-items:flex-start;gap:0.6rem;padding:0.55rem 0;${border}">
+        <span style="font-size:1rem;flex-shrink:0;margin-top:2px;">🚶</span>
         <div style="font-size:0.8rem;color:#374151;">
-          <div style="font-weight:600;">徒歩${mins ? '　' + mins + '分' : ''}</div>
-          ${from ? `<div style="color:#6b7280;margin-top:2px;">${escHtml(from)}${to ? ' → ' + escHtml(to) : ''}</div>` : ''}
+          <div style="font-weight:600;">徒歩${mins ? ' ' + mins + '分' : ''}</div>
+          ${fromName ? `<div style="color:#6b7280;margin-top:2px;">${escHtml(fromName)}${toName ? ' → ' + escHtml(toName) : ''}</div>` : ''}
         </div>
       </div>`;
     } else {
-      const line = leg.line || leg.route?.shortName || leg.route?.longName || leg.headsign || leg.tripHeadsign || '電車';
-      const color = leg.color || leg.route?.color;
-      const borderColor = color ? (color.startsWith('#') ? color : '#' + color) : '#6366f1';
-      const from    = stopName(leg.from || leg.fromStop || leg.departure?.stop);
-      const to      = stopName(leg.to   || leg.toStop   || leg.arrival?.stop);
-      const depart  = legTime(leg.departureTime || leg.departure?.time || leg.depart);
-      const arrive  = legTime(leg.arrivalTime   || leg.arrival?.time  || leg.arrive);
-      const mins    = leg.durationSecs != null ? Math.ceil(leg.durationSecs / 60) : '';
-      return `<div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid #f3f4f6;border-left:3px solid ${borderColor};padding-left:0.6rem;">
-        <span style="font-size:1.1rem;flex-shrink:0;margin-top:1px;">🚃</span>
+      const routeName  = leg.routeName || '電車';
+      const headsign   = leg.headsign  || '';
+      const colorHex   = leg.color ? (leg.color.startsWith('#') ? leg.color : '#' + leg.color) : '#6366f1';
+      const icon       = modeIcon(leg.mode);
+      const fromName   = leg.from?.name || '';
+      const toName     = leg.to?.name   || '';
+      const depSecs    = secsToHHMM(leg.departureSecs);
+      const arrSecs    = secsToHHMM(leg.arrivalSecs);
+      const rideMins   = (leg.departureSecs != null && leg.arrivalSecs != null)
+                         ? Math.round((leg.arrivalSecs - leg.departureSecs) / 60) : null;
+
+      html += `<div style="display:flex;align-items:flex-start;gap:0.6rem;padding:0.55rem 0;${border}padding-left:0.5rem;border-left:3px solid ${colorHex};margin-left:0.1rem;">
+        <span style="font-size:1rem;flex-shrink:0;margin-top:2px;">${icon}</span>
         <div style="font-size:0.8rem;color:#374151;min-width:0;flex:1;">
-          <div style="font-weight:600;">${escHtml(line)}${mins ? '　' + mins + '分' : ''}</div>
-          ${from ? `<div style="color:#6b7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(from)} → ${escHtml(to)}</div>` : ''}
-          ${depart ? `<div style="color:#9ca3af;font-size:0.72rem;margin-top:1px;">${depart} 発 → ${arrive} 着</div>` : ''}
+          <div style="font-weight:700;">${escHtml(routeName)}</div>
+          ${headsign ? `<div style="color:#6b7280;font-size:0.75rem;margin-top:1px;">行先: ${escHtml(headsign)}</div>` : ''}
+          ${fromName ? `<div style="margin-top:3px;color:#374151;">${escHtml(fromName)} <span style="color:#9ca3af;">→</span> ${escHtml(toName)}</div>` : ''}
+          ${depSecs ? `<div style="color:#9ca3af;font-size:0.73rem;margin-top:2px;">${depSecs} 発 → ${arrSecs} 着${rideMins ? '（' + rideMins + '分）' : ''}</div>` : ''}
         </div>
       </div>`;
     }
   });
 
-  return `<div style="margin-bottom:0.5rem;font-size:0.75rem;color:#6b7280;">合計 約${totalMin}分</div>` + items.join('');
+  // Egress walk
+  if (egressWalk) {
+    html += `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0;border-top:1px solid #f3f4f6;margin-top:0.1rem;">
+      <span style="font-size:1rem;flex-shrink:0;">🚶</span>
+      <span style="font-size:0.78rem;color:#6b7280;">目的地まで徒歩 ${egressWalk}分</span>
+    </div>`;
+  }
+
+  return html;
 }
 
 // ─── Keyboard shortcuts ───────────────────────────────────────────
