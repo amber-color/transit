@@ -95,6 +95,10 @@
         <span>移動中（自動）</span>
       </div>
       <div class="flex items-center gap-1.5">
+        <div class="w-3 h-3 rounded" style="background:#d97706"></div>
+        <span>場所を特定できない</span>
+      </div>
+      <div class="flex items-center gap-1.5">
         <div class="w-3 h-3 rounded" style="background:#ef4444"></div>
         <span>時間が足りない</span>
       </div>
@@ -361,9 +365,28 @@ async function computeSchedule() {
     let travelKnown = false;
     let travelLegs = [];
     let travelJourney = null;
-    if (fromGeo && toGeo) {
+    let geoError = null; // 'from' | 'to' | 'api' | null
+
+    if (!fromGeo) {
+      geoError = 'from';
+    } else if (!toGeo) {
+      geoError = 'to';
+    } else {
       const details = await fetchTransitDetails(fromGeo, toGeo);
-      if (details !== null) { travelMin = details.minutes; travelKnown = true; travelLegs = details.legs; travelJourney = details.journey; }
+      if (details !== null) {
+        travelMin = details.minutes; travelKnown = true;
+        travelLegs = details.legs; travelJourney = details.journey;
+      } else {
+        geoError = 'api';
+      }
+    }
+
+    if (geoError) {
+      const loc = geoError === 'from' ? currentLocation : geoError === 'to' ? event.location : null;
+      const msg = geoError === 'from' || geoError === 'to'
+        ? `「${event.name || event.location}」への移動: 「${loc}」の場所を特定できません（Nominatimで見つからない地名）`
+        : `「${event.name || event.location}」への移動: 経路検索APIのエラー`;
+      warnings.push({ type: 'geo', msg });
     }
 
     const travelStartMs = currentMs;
@@ -376,6 +399,7 @@ async function computeSchedule() {
       isTravel: true,
       travelMin,
       travelKnown,
+      geoError,
       fromLocation: currentLocation,
       toLocation: event.location,
       legs: travelLegs,
@@ -395,7 +419,7 @@ async function computeSchedule() {
           title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中',
           start: toIsoLocal(travelStartMs),
           end: toIsoLocal(travelDisplayEnd),
-          backgroundColor: hasWarning ? '#ef4444' : '#9ca3af',
+          backgroundColor: hasWarning ? '#ef4444' : geoError ? '#d97706' : '#9ca3af',
           borderColor: 'transparent',
           textColor: '#fff',
           extendedProps: { ...travelProps, warning: hasWarning },
@@ -410,7 +434,7 @@ async function computeSchedule() {
           title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中',
           start: toIsoLocal(travelStartMs),
           end: toIsoLocal(travelEndMs),
-          backgroundColor: '#9ca3af',
+          backgroundColor: geoError ? '#d97706' : '#9ca3af',
           borderColor: 'transparent',
           textColor: '#fff',
           extendedProps: travelProps,
@@ -430,7 +454,7 @@ async function computeSchedule() {
           title: travelKnown ? `🚃 移動中 ${travelMin}分` : '🚃 移動中',
           start: toIsoLocal(travelStartMs),
           end: toIsoLocal(Math.min(travelEndMs, departureMs)),
-          backgroundColor: hasWarning ? '#ef4444' : '#9ca3af',
+          backgroundColor: hasWarning ? '#ef4444' : geoError ? '#d97706' : '#9ca3af',
           borderColor: 'transparent',
           textColor: '#fff',
           extendedProps: { ...travelProps, warning: hasWarning },
@@ -440,7 +464,7 @@ async function computeSchedule() {
       eventEndMs = departureMs;
     }
 
-    if (hasWarning && warningMsg) warnings.push(warningMsg);
+    if (hasWarning && warningMsg) warnings.push({ type: 'time', msg: warningMsg });
 
     if (eventStartMs < eventEndMs) {
       calEvents.push({
@@ -476,11 +500,14 @@ function renderWarnings(warnings) {
     return;
   }
   container.style.display = 'block';
-  container.innerHTML = warnings.map(w =>
-    `<div class="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg text-xs flex items-start gap-2">
-      <span class="mt-0.5">⚠️</span><span>${escHtml(w)}</span>
-    </div>`
-  ).join('');
+  container.innerHTML = warnings.map(w => {
+    const isGeo = w.type === 'geo';
+    const bg  = isGeo ? 'background:#fffbeb;border:1px solid #fcd34d;color:#92400e;' : 'background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;';
+    const icon = isGeo ? '📍' : '⚠️';
+    return `<div style="${bg}padding:0.4rem 0.6rem;border-radius:0.4rem;font-size:0.72rem;display:flex;align-items:flex-start;gap:0.4rem;">
+      <span>${icon}</span><span>${escHtml(w.msg)}</span>
+    </div>`;
+  }).join('');
 }
 
 function escHtml(s) {
@@ -913,21 +940,20 @@ document.addEventListener('DOMContentLoaded', () => {
       wrap.style.cssText = 'padding:2px 4px;overflow:hidden;';
 
       if (ep.isTravel) {
-        // Title row: 🚃 移動中 Xmin
         const t = document.createElement('div');
         t.style.cssText = 'font-size:0.7rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-        t.textContent = event.title;
+        t.textContent = ep.geoError ? '📍 場所を特定できません' : event.title;
         wrap.appendChild(t);
-        // Route row: 出発地 → 目的地
         const r = document.createElement('div');
         r.style.cssText = 'font-size:0.65rem;opacity:0.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;';
         r.textContent = `${ep.fromLocation} → ${ep.toLocation}`;
         wrap.appendChild(r);
-        // Hint
-        const h = document.createElement('div');
-        h.style.cssText = 'font-size:0.6rem;opacity:0.75;margin-top:2px;';
-        h.textContent = 'タップして詳細';
-        wrap.appendChild(h);
+        if (!ep.geoError) {
+          const h = document.createElement('div');
+          h.style.cssText = 'font-size:0.6rem;opacity:0.75;margin-top:2px;';
+          h.textContent = 'タップして詳細';
+          wrap.appendChild(h);
+        }
       } else {
         // User event: title + location
         const t = document.createElement('div');
