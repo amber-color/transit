@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>移動時間カレンダー</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Segoe UI', sans-serif; }
@@ -124,8 +126,14 @@
       <!-- Location -->
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">場所</label>
-        <input id="modal-location" type="text" placeholder="例：渋谷駅、東京タワー"
-          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        <div style="display:flex;gap:0.4rem;">
+          <input id="modal-location" type="text" placeholder="例：渋谷駅、東京タワー"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            oninput="modalLocationGeo=null;updateModalGeoIndicator()">
+          <button onclick="openMapPicker('event')" type="button"
+            style="flex-shrink:0;padding:0 0.6rem;background:#f3f4f6;border:1px solid #d1d5db;border-radius:0.5rem;font-size:0.75rem;color:#374151;white-space:nowrap;cursor:pointer;">🗺️ 地図</button>
+        </div>
+        <div id="modal-geo-indicator" style="display:none;font-size:0.7rem;color:#16a34a;margin-top:3px;">📍 地図で指定済み</div>
       </div>
       <!-- Type -->
       <div>
@@ -191,6 +199,21 @@
   </div>
 </div>
 
+<!-- ===== Map Picker Modal ===== -->
+<div id="map-picker-modal" style="display:none;position:fixed;inset:0;z-index:70;flex-direction:column;background:#000;">
+  <div style="background:white;padding:0.65rem 1rem;display:flex;align-items:center;gap:0.75rem;flex-shrink:0;border-bottom:1px solid #e5e7eb;">
+    <button onclick="closeMapPicker()" style="font-size:1.3rem;color:#9ca3af;background:none;border:none;cursor:pointer;padding:0;line-height:1;">×</button>
+    <span style="font-weight:600;font-size:0.9rem;flex:1;">地図で場所を選択</span>
+    <span id="map-picker-hint" style="font-size:0.72rem;color:#6b7280;">タップでピンを立てる</span>
+  </div>
+  <div id="map-container" style="flex:1;min-height:0;"></div>
+  <div style="background:white;padding:0.75rem 1rem;border-top:1px solid #e5e7eb;flex-shrink:0;">
+    <div id="map-picker-name" style="font-size:0.82rem;color:#374151;min-height:1.3em;margin-bottom:0.5rem;"></div>
+    <button id="map-picker-confirm" onclick="confirmMapPicker()" disabled
+      style="width:100%;padding:0.65rem;background:#6366f1;color:white;border:none;border-radius:0.5rem;font-size:0.88rem;font-weight:600;cursor:pointer;opacity:0.4;">この場所を選択</button>
+  </div>
+</div>
+
 <!-- ===== Journey Detail Modal ===== -->
 <div id="journey-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:flex-start;justify-content:center;padding:1rem;background:rgba(0,0,0,0.5);overflow-y:auto;">
   <div class="bg-white rounded-xl shadow-xl w-full max-w-sm" style="margin:auto;">
@@ -215,8 +238,14 @@
     <div class="px-5 py-4 space-y-4">
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">出発地</label>
-        <input id="ds-location" type="text" placeholder="例：自宅、渋谷駅"
-          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        <div style="display:flex;gap:0.4rem;">
+          <input id="ds-location" type="text" placeholder="例：自宅、渋谷駅"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            oninput="dayStartGeo=null;updateDsGeoIndicator()">
+          <button onclick="openMapPicker('daystart')" type="button"
+            style="flex-shrink:0;padding:0 0.6rem;background:#f3f4f6;border:1px solid #d1d5db;border-radius:0.5rem;font-size:0.75rem;color:#374151;white-space:nowrap;cursor:pointer;">🗺️ 地図</button>
+        </div>
+        <div id="ds-geo-indicator" style="display:none;font-size:0.7rem;color:#16a34a;margin-top:3px;">📍 地図で指定済み</div>
       </div>
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">出発時刻</label>
@@ -251,6 +280,90 @@ let state = {
 let editingEventId = null;
 let recomputeTimer = null;
 let calendar = null;
+let modalLocationGeo = null; // {lat, lon} if set via map picker for event modal
+let dayStartGeo = null;      // {lat, lon} if set via map picker for day start modal
+
+// ─── Map picker ───────────────────────────────────────────────────
+let mapInstance = null;
+let mapMarker = null;
+let mapPickerTarget = null; // 'event' | 'daystart'
+let mapPickerSelectedGeo = null;
+
+function openMapPicker(target) {
+  mapPickerTarget = target;
+  mapPickerSelectedGeo = null;
+  document.getElementById('map-picker-name').textContent = 'タップして場所を選んでください';
+  const btn = document.getElementById('map-picker-confirm');
+  btn.disabled = true; btn.style.opacity = '0.4';
+  document.getElementById('map-picker-modal').style.display = 'flex';
+
+  setTimeout(() => {
+    if (!mapInstance) {
+      mapInstance = L.map('map-container').setView([35.681, 139.767], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(mapInstance);
+      mapInstance.on('click', onMapClick);
+    } else {
+      mapInstance.invalidateSize();
+    }
+  }, 80);
+}
+
+async function onMapClick(e) {
+  const { lat, lng } = e.latlng;
+  if (mapMarker) mapMarker.remove();
+  mapMarker = L.marker([lat, lng]).addTo(mapInstance);
+  mapPickerSelectedGeo = { lat, lon: lng };
+  document.getElementById('map-picker-name').textContent = '住所を取得中...';
+  document.getElementById('map-picker-confirm').disabled = true;
+  document.getElementById('map-picker-confirm').style.opacity = '0.4';
+
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ja`,
+      { headers: { 'Accept-Language': 'ja' } }
+    );
+    const data = await res.json();
+    const name = data.name || data.address?.road || data.display_name?.split(',')[0] || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    document.getElementById('map-picker-name').textContent = name;
+    mapPickerSelectedGeo.name = name;
+  } catch {
+    const name = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    document.getElementById('map-picker-name').textContent = name;
+    mapPickerSelectedGeo.name = name;
+  }
+
+  const btn = document.getElementById('map-picker-confirm');
+  btn.disabled = false; btn.style.opacity = '1';
+}
+
+function closeMapPicker() {
+  document.getElementById('map-picker-modal').style.display = 'none';
+}
+
+function confirmMapPicker() {
+  if (!mapPickerSelectedGeo) return;
+  const { lat, lon, name } = mapPickerSelectedGeo;
+  if (mapPickerTarget === 'event') {
+    document.getElementById('modal-location').value = name || '';
+    modalLocationGeo = { lat, lon };
+    updateModalGeoIndicator();
+  } else {
+    document.getElementById('ds-location').value = name || '';
+    dayStartGeo = { lat, lon };
+    updateDsGeoIndicator();
+  }
+  closeMapPicker();
+}
+
+function updateModalGeoIndicator() {
+  document.getElementById('modal-geo-indicator').style.display = modalLocationGeo ? 'block' : 'none';
+}
+function updateDsGeoIndicator() {
+  document.getElementById('ds-geo-indicator').style.display = dayStartGeo ? 'block' : 'none';
+}
 
 // ─── Persistence ─────────────────────────────────────────────────
 function getToday() {
@@ -352,13 +465,14 @@ async function computeSchedule() {
 
   let currentMs = dateTimeMs(dateStr, state.dayStart.time);
   let currentLocation = state.dayStart.location;
+  let currentGeo = state.dayStart.geo || null; // stored coords from map picker
 
   for (const event of state.events) {
     if (!event.location) continue;
 
     const [fromGeo, toGeo] = await Promise.all([
-      geocode(currentLocation),
-      geocode(event.location),
+      currentGeo ? Promise.resolve(currentGeo) : geocode(currentLocation),
+      event.locationGeo ? Promise.resolve(event.locationGeo) : geocode(event.location),
     ]);
 
     let travelMin = 0;
@@ -481,6 +595,7 @@ async function computeSchedule() {
 
     currentMs = eventEndMs || travelEndMs;
     currentLocation = event.location;
+    currentGeo = event.locationGeo || null;
   }
 
   return { calEvents, warnings };
@@ -635,6 +750,7 @@ function setSelectedDate(dateStr) {
 // ─── Event modal ─────────────────────────────────────────────────
 function openAddModal() {
   editingEventId = null;
+  modalLocationGeo = null;
   document.getElementById('modal-title').textContent = '予定を追加';
   document.getElementById('modal-name').value = '';
   document.getElementById('modal-location').value = '';
@@ -642,6 +758,7 @@ function openAddModal() {
   document.getElementById('modal-stay-minutes').value = '60';
   document.getElementById('modal-departure-time').value = '15:00';
   document.getElementById('modal-delete-btn').style.display = 'none';
+  updateModalGeoIndicator();
   // Default to fixed_arrival
   document.querySelector('input[name="event-type"][value="fixed_arrival"]').checked = true;
   onTypeChange();
@@ -652,9 +769,11 @@ function openEditModal(id) {
   const event = state.events.find(e => e.id === id);
   if (!event) return;
   editingEventId = id;
+  modalLocationGeo = event.locationGeo || null;
   document.getElementById('modal-title').textContent = '予定を編集';
   document.getElementById('modal-name').value = event.name || '';
   document.getElementById('modal-location').value = event.location || '';
+  updateModalGeoIndicator();
   document.getElementById('modal-arrival-time').value = event.arrivalTime || '11:00';
   document.getElementById('modal-stay-minutes').value = event.stayMinutes || 60;
   document.getElementById('modal-departure-time').value = event.departureTime || '15:00';
@@ -700,7 +819,7 @@ function saveEventModal() {
   if (!location) { showModalError('場所を入力してください'); return; }
   if (!type) { showModalError('タイプを選択してください'); return; }
 
-  const eventData = { name, location, type };
+  const eventData = { name, location, type, locationGeo: modalLocationGeo || null };
   if (type === 'fixed_arrival') {
     eventData.arrivalTime = document.getElementById('modal-arrival-time').value;
     eventData.stayMinutes = parseInt(document.getElementById('modal-stay-minutes').value) || 60;
@@ -756,8 +875,10 @@ function moveEvent(id, delta) {
 
 // ─── Day start modal ─────────────────────────────────────────────
 function openDayStartModal() {
+  dayStartGeo = state.dayStart.geo || null;
   document.getElementById('ds-location').value = state.dayStart.location;
   document.getElementById('ds-time').value = state.dayStart.time;
+  updateDsGeoIndicator();
   document.getElementById('daystart-modal').style.display = 'flex';
 }
 
@@ -769,7 +890,7 @@ function saveDayStart() {
   const location = document.getElementById('ds-location').value.trim();
   const time = document.getElementById('ds-time').value;
   if (!location) { alert('出発地を入力してください'); return; }
-  state.dayStart = { location, time };
+  state.dayStart = { location, time, geo: dayStartGeo || null };
   closeDayStartModal();
   saveState();
   renderSidebar();
@@ -895,6 +1016,7 @@ function renderJourneyDetail(ep) {
 // ─── Keyboard shortcuts ───────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    closeMapPicker();
     closeEventModal();
     closeDayStartModal();
     closeJourneyModal();
